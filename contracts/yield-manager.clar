@@ -33,3 +33,38 @@
 (define-constant ERR_STRATEGY_FULL (err u410))
 (define-constant ERR_PORTFOLIO_LIMIT_REACHED (err u411))
 (define-constant ERR_REBALANCE_NOT_NEEDED (err u412))
+
+;; Data structures
+(define-map strategies 
+    uint 
+    {
+        name: (string-ascii 64),
+        contract-address: principal,
+        risk-level: uint, ;; 1-5 (1=lowest, 5=highest)
+        expected-apy: uint, ;; In basis points (e.g., 500 = 5%)
+        current-tvl: uint,
+        max-tvl: uint,
+        is-active: bool,
+        created-at: uint,
+        last-updated: uint
+    }
+)
+
+(define-map strategy-performance
+    uint
+    {
+        actual-apy: uint,
+        total-yield-generated: uint,
+        total-deposits: uint,
+        total-withdrawals: uint,
+        performance-score: uint ;; 1-100
+    }
+)
+
+;; Data variables
+(define-data-var next-strategy-id uint u1)
+(define-data-var total-strategies uint u0)
+(define-data-var total-tvl uint u0)
+(define-data-var protocol-fee uint u100) ;; 1% in basis points
+(define-data-var emergency-mode bool false)
+(define-data-var rebalance-enabled bool true)
