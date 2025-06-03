@@ -68,3 +68,26 @@
 (define-data-var protocol-fee uint u100) ;; 1% in basis points
 (define-data-var emergency-mode bool false)
 (define-data-var rebalance-enabled bool true)
+
+;; Admin functions
+(define-public (set-protocol-fee (new-fee uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+        (asserts! (<= new-fee u1000) ERR_INVALID_PERCENTAGE) ;; Max 10%
+        (ok (var-set protocol-fee new-fee))
+    )
+)
+
+(define-public (toggle-emergency-mode)
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+        (ok (var-set emergency-mode (not (var-get emergency-mode))))
+    )
+)
+
+(define-public (toggle-rebalance)
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+        (ok (var-set rebalance-enabled (not (var-get rebalance-enabled))))
+    )
+)
