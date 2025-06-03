@@ -91,3 +91,57 @@
         (ok (var-set rebalance-enabled (not (var-get rebalance-enabled))))
     )
 )
+
+;; Strategy management functions
+(define-public (register-strategy 
+    (name (string-ascii 64))
+    (contract-address principal)
+    (risk-level uint)
+    (expected-apy uint)
+    (max-tvl uint))
+    (let 
+        (
+            (strategy-id (var-get next-strategy-id))
+            (current-block (- stacks-block-height u0))
+        )
+        (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+        (asserts! (< (var-get total-strategies) max-strategies) ERR_STRATEGY_FULL)
+        (asserts! (and (>= risk-level u1) (<= risk-level u5)) ERR_INVALID_PERCENTAGE)
+        (asserts! (> max-tvl u0) ERR_INVALID_AMOUNT)
+        
+        (map-set strategies strategy-id {
+            name: name,
+            contract-address: contract-address,
+            risk-level: risk-level,
+            expected-apy: expected-apy,
+            current-tvl: u0,
+            max-tvl: max-tvl,
+            is-active: true,
+            created-at: current-block,
+            last-updated: current-block
+        })
+        
+        (map-set strategy-performance strategy-id {
+            actual-apy: u0,
+            total-yield-generated: u0,
+            total-deposits: u0,
+            total-withdrawals: u0,
+            performance-score: u50
+        })
+        
+        (var-set next-strategy-id (+ strategy-id u1))
+        (var-set total-strategies (+ (var-get total-strategies) u1))
+        (ok strategy-id)
+    )
+)
+
+(define-public (update-strategy-status (strategy-id uint) (is-active bool))
+    (let ((strategy (unwrap! (map-get? strategies strategy-id) ERR_STRATEGY_NOT_FOUND)))
+        (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+        (map-set strategies strategy-id (merge strategy {
+            is-active: is-active,
+            last-updated: (- stacks-block-height u0)
+        }))
+        (ok true)
+    )
+)
