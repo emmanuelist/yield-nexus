@@ -61,6 +61,27 @@
     }
 )
 
+(define-map user-portfolios
+    principal
+    {
+        total-deposited: uint,
+        total-locked: uint,
+        last-rebalance: uint,
+        emergency-exit-time: (optional uint),
+        strategies-count: uint
+    }
+)
+
+(define-map user-strategy-allocations
+    {user: principal, strategy-id: uint}
+    {
+        amount: uint,
+        allocated-at: uint,
+        last-yield-claim: uint,
+        target-percentage: uint ;; In basis points
+    }
+)
+
 ;; Data variables
 (define-data-var next-strategy-id uint u1)
 (define-data-var total-strategies uint u0)
