@@ -166,3 +166,60 @@
         (ok true)
     )
 )
+
+;; User portfolio functions
+(define-public (deposit-to-strategy (strategy-id uint) (amount uint) (target-percentage uint))
+    (let 
+        (
+            (strategy (unwrap! (map-get? strategies strategy-id) ERR_STRATEGY_NOT_FOUND))
+            (user-portfolio (default-to 
+                {total-deposited: u0, total-locked: u0, last-rebalance: u0, emergency-exit-time: none, strategies-count: u0}
+                (map-get? user-portfolios tx-sender)))
+            (current-allocation (default-to 
+                {amount: u0, allocated-at: u0, last-yield-claim: u0, target-percentage: u0}
+                (map-get? user-strategy-allocations {user: tx-sender, strategy-id: strategy-id})))
+            (current-block (- stacks-block-height u0))
+        )
+        (asserts! (not (var-get emergency-mode)) ERR_NOT_AUTHORIZED)
+        (asserts! (get is-active strategy) ERR_STRATEGY_INACTIVE)
+        (asserts! (>= amount min-deposit-amount) ERR_INVALID_AMOUNT)
+        (asserts! (<= target-percentage max-allocation-percentage) ERR_INVALID_PERCENTAGE)
+        (asserts! (<= (+ (get current-tvl strategy) amount) (get max-tvl strategy)) ERR_ALLOCATION_EXCEEDED)
+        
+        ;; Lock sBTC tokens
+        (try! (contract-call? sbtc-token-contract protocol-lock amount tx-sender yield-manager-role))
+        
+        ;; Update strategy TVL
+        (map-set strategies strategy-id (merge strategy {
+            current-tvl: (+ (get current-tvl strategy) amount),
+            last-updated: current-block
+        }))
+        
+        ;; Update user portfolio
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            total-deposited: (+ (get total-deposited user-portfolio) amount),
+            total-locked: (+ (get total-locked user-portfolio) amount),
+            strategies-count: (if (is-eq (get amount current-allocation) u0)
+                (+ (get strategies-count user-portfolio) u1)
+                (get strategies-count user-portfolio))
+        }))
+        
+        ;; Update user strategy allocation
+        (map-set user-strategy-allocations {user: tx-sender, strategy-id: strategy-id} {
+            amount: (+ (get amount current-allocation) amount),
+            allocated-at: current-block,
+            last-yield-claim: (get last-yield-claim current-allocation),
+            target-percentage: target-percentage
+        })
+        
+        ;; Update strategy performance
+        (let ((perf (unwrap! (map-get? strategy-performance strategy-id) ERR_STRATEGY_NOT_FOUND)))
+            (map-set strategy-performance strategy-id (merge perf {
+                total-deposits: (+ (get total-deposits perf) amount)
+            }))
+        )
+        
+        (var-set total-tvl (+ (var-get total-tvl) amount))
+        (ok true)
+    )
+)
