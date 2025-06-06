@@ -302,3 +302,34 @@
         (ok total-locked)
     )
 )
+
+(define-public (rebalance-portfolio (target-allocations (list 50 {strategy-id: uint, target-percentage: uint})))
+    (let 
+        (
+            (user-portfolio (unwrap! (map-get? user-portfolios tx-sender) ERR_INSUFFICIENT_BALANCE))
+            (current-block (- stacks-block-height u0))
+            (last-rebalance (get last-rebalance user-portfolio))
+        )
+        (asserts! (var-get rebalance-enabled) ERR_NOT_AUTHORIZED)
+        (asserts! (not (var-get emergency-mode)) ERR_NOT_AUTHORIZED)
+        (asserts! (> (get total-locked user-portfolio) u0) ERR_INSUFFICIENT_BALANCE)
+        
+        ;; Check if rebalance is needed (at least 6 hours since last rebalance)
+        (asserts! (>= (- current-block last-rebalance) u36) ERR_REBALANCE_NOT_NEEDED)
+        
+        ;; Validate total allocation percentages
+        (asserts! (is-eq (fold + (map get-target-percentage target-allocations) u0) max-allocation-percentage) ERR_INVALID_PERCENTAGE)
+        
+        ;; Update last rebalance time
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            last-rebalance: current-block
+        }))
+        
+        (ok true)
+    )
+)
+
+;; Helper functions
+(define-private (get-target-percentage (allocation {strategy-id: uint, target-percentage: uint}))
+    (get target-percentage allocation)
+)
