@@ -61,6 +61,27 @@
     }
 )
 
+(define-map user-portfolios
+    principal
+    {
+        total-deposited: uint,
+        total-locked: uint,
+        last-rebalance: uint,
+        emergency-exit-time: (optional uint),
+        strategies-count: uint
+    }
+)
+
+(define-map user-strategy-allocations
+    {user: principal, strategy-id: uint}
+    {
+        amount: uint,
+        allocated-at: uint,
+        last-yield-claim: uint,
+        target-percentage: uint ;; In basis points
+    }
+)
+
 ;; Data variables
 (define-data-var next-strategy-id uint u1)
 (define-data-var total-strategies uint u0)
@@ -144,4 +165,171 @@
         }))
         (ok true)
     )
+)
+
+;; User portfolio functions
+(define-public (deposit-to-strategy (strategy-id uint) (amount uint) (target-percentage uint))
+    (let 
+        (
+            (strategy (unwrap! (map-get? strategies strategy-id) ERR_STRATEGY_NOT_FOUND))
+            (user-portfolio (default-to 
+                {total-deposited: u0, total-locked: u0, last-rebalance: u0, emergency-exit-time: none, strategies-count: u0}
+                (map-get? user-portfolios tx-sender)))
+            (current-allocation (default-to 
+                {amount: u0, allocated-at: u0, last-yield-claim: u0, target-percentage: u0}
+                (map-get? user-strategy-allocations {user: tx-sender, strategy-id: strategy-id})))
+            (current-block (- stacks-block-height u0))
+        )
+        (asserts! (not (var-get emergency-mode)) ERR_NOT_AUTHORIZED)
+        (asserts! (get is-active strategy) ERR_STRATEGY_INACTIVE)
+        (asserts! (>= amount min-deposit-amount) ERR_INVALID_AMOUNT)
+        (asserts! (<= target-percentage max-allocation-percentage) ERR_INVALID_PERCENTAGE)
+        (asserts! (<= (+ (get current-tvl strategy) amount) (get max-tvl strategy)) ERR_ALLOCATION_EXCEEDED)
+        
+        ;; Lock sBTC tokens
+        (try! (contract-call? sbtc-token-contract protocol-lock amount tx-sender yield-manager-role))
+        
+        ;; Update strategy TVL
+        (map-set strategies strategy-id (merge strategy {
+            current-tvl: (+ (get current-tvl strategy) amount),
+            last-updated: current-block
+        }))
+        
+        ;; Update user portfolio
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            total-deposited: (+ (get total-deposited user-portfolio) amount),
+            total-locked: (+ (get total-locked user-portfolio) amount),
+            strategies-count: (if (is-eq (get amount current-allocation) u0)
+                (+ (get strategies-count user-portfolio) u1)
+                (get strategies-count user-portfolio))
+        }))
+        
+        ;; Update user strategy allocation
+        (map-set user-strategy-allocations {user: tx-sender, strategy-id: strategy-id} {
+            amount: (+ (get amount current-allocation) amount),
+            allocated-at: current-block,
+            last-yield-claim: (get last-yield-claim current-allocation),
+            target-percentage: target-percentage
+        })
+        
+        ;; Update strategy performance
+        (let ((perf (unwrap! (map-get? strategy-performance strategy-id) ERR_STRATEGY_NOT_FOUND)))
+            (map-set strategy-performance strategy-id (merge perf {
+                total-deposits: (+ (get total-deposits perf) amount)
+            }))
+        )
+        
+        (var-set total-tvl (+ (var-get total-tvl) amount))
+        (ok true)
+    )
+)
+
+(define-public (withdraw-from-strategy (strategy-id uint) (amount uint))
+    (let 
+        (
+            (strategy (unwrap! (map-get? strategies strategy-id) ERR_STRATEGY_NOT_FOUND))
+            (user-portfolio (unwrap! (map-get? user-portfolios tx-sender) ERR_INSUFFICIENT_BALANCE))
+            (current-allocation (unwrap! (map-get? user-strategy-allocations {user: tx-sender, strategy-id: strategy-id}) ERR_INSUFFICIENT_BALANCE))
+            (current-block (- stacks-block-height u0))
+        )
+        (asserts! (<= amount (get amount current-allocation)) ERR_INSUFFICIENT_BALANCE)
+        (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        
+        ;; Check emergency exit cooldown
+        (match (get emergency-exit-time user-portfolio)
+            exit-time (asserts! (>= current-block (+ exit-time emergency-cooldown)) ERR_EMERGENCY_COOLDOWN)
+            true
+        )
+        
+        ;; Unlock sBTC tokens
+        (try! (contract-call? sbtc-token-contract protocol-unlock amount tx-sender yield-manager-role))
+        
+        ;; Update strategy TVL
+        (map-set strategies strategy-id (merge strategy {
+            current-tvl: (- (get current-tvl strategy) amount),
+            last-updated: current-block
+        }))
+        
+        ;; Update user portfolio
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            total-locked: (- (get total-locked user-portfolio) amount),
+            strategies-count: (if (is-eq (- (get amount current-allocation) amount) u0)
+                (- (get strategies-count user-portfolio) u1)
+                (get strategies-count user-portfolio))
+        }))
+        
+        ;; Update user strategy allocation
+        (let ((new-amount (- (get amount current-allocation) amount)))
+            (if (is-eq new-amount u0)
+                (map-delete user-strategy-allocations {user: tx-sender, strategy-id: strategy-id})
+                (map-set user-strategy-allocations {user: tx-sender, strategy-id: strategy-id} 
+                    (merge current-allocation {amount: new-amount}))
+            )
+        )
+        
+        ;; Update strategy performance
+        (let ((perf (unwrap! (map-get? strategy-performance strategy-id) ERR_STRATEGY_NOT_FOUND)))
+            (map-set strategy-performance strategy-id (merge perf {
+                total-withdrawals: (+ (get total-withdrawals perf) amount)
+            }))
+        )
+        
+        (var-set total-tvl (- (var-get total-tvl) amount))
+        (ok true)
+    )
+)
+
+(define-public (emergency-withdraw)
+    (let 
+        (
+            (user-portfolio (unwrap! (map-get? user-portfolios tx-sender) ERR_INSUFFICIENT_BALANCE))
+            (total-locked (get total-locked user-portfolio))
+            (current-block (- stacks-block-height u0))
+        )
+        (asserts! (> total-locked u0) ERR_INSUFFICIENT_BALANCE)
+        
+        ;; Unlock all sBTC tokens
+        (try! (contract-call? sbtc-token-contract protocol-unlock total-locked tx-sender yield-manager-role))
+        
+        ;; Update user portfolio with emergency exit timestamp
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            total-locked: u0,
+            emergency-exit-time: (some current-block),
+            strategies-count: u0
+        }))
+        
+        (var-set total-tvl (- (var-get total-tvl) total-locked))
+        (ok total-locked)
+    )
+)
+
+(define-public (rebalance-portfolio (target-allocations (list 50 {strategy-id: uint, target-percentage: uint})))
+    (let 
+        (
+            (user-portfolio (unwrap! (map-get? user-portfolios tx-sender) ERR_INSUFFICIENT_BALANCE))
+            (current-block (- stacks-block-height u0))
+            (last-rebalance (get last-rebalance user-portfolio))
+        )
+        (asserts! (var-get rebalance-enabled) ERR_NOT_AUTHORIZED)
+        (asserts! (not (var-get emergency-mode)) ERR_NOT_AUTHORIZED)
+        (asserts! (> (get total-locked user-portfolio) u0) ERR_INSUFFICIENT_BALANCE)
+        
+        ;; Check if rebalance is needed (at least 6 hours since last rebalance)
+        (asserts! (>= (- current-block last-rebalance) u36) ERR_REBALANCE_NOT_NEEDED)
+        
+        ;; Validate total allocation percentages
+        (asserts! (is-eq (fold + (map get-target-percentage target-allocations) u0) max-allocation-percentage) ERR_INVALID_PERCENTAGE)
+        
+        ;; Update last rebalance time
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            last-rebalance: current-block
+        }))
+        
+        (ok true)
+    )
+)
+
+;; Helper functions
+(define-private (get-target-percentage (allocation {strategy-id: uint, target-percentage: uint}))
+    (get target-percentage allocation)
 )
