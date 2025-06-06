@@ -223,3 +223,82 @@
         (ok true)
     )
 )
+
+(define-public (withdraw-from-strategy (strategy-id uint) (amount uint))
+    (let 
+        (
+            (strategy (unwrap! (map-get? strategies strategy-id) ERR_STRATEGY_NOT_FOUND))
+            (user-portfolio (unwrap! (map-get? user-portfolios tx-sender) ERR_INSUFFICIENT_BALANCE))
+            (current-allocation (unwrap! (map-get? user-strategy-allocations {user: tx-sender, strategy-id: strategy-id}) ERR_INSUFFICIENT_BALANCE))
+            (current-block (- stacks-block-height u0))
+        )
+        (asserts! (<= amount (get amount current-allocation)) ERR_INSUFFICIENT_BALANCE)
+        (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        
+        ;; Check emergency exit cooldown
+        (match (get emergency-exit-time user-portfolio)
+            exit-time (asserts! (>= current-block (+ exit-time emergency-cooldown)) ERR_EMERGENCY_COOLDOWN)
+            true
+        )
+        
+        ;; Unlock sBTC tokens
+        (try! (contract-call? sbtc-token-contract protocol-unlock amount tx-sender yield-manager-role))
+        
+        ;; Update strategy TVL
+        (map-set strategies strategy-id (merge strategy {
+            current-tvl: (- (get current-tvl strategy) amount),
+            last-updated: current-block
+        }))
+        
+        ;; Update user portfolio
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            total-locked: (- (get total-locked user-portfolio) amount),
+            strategies-count: (if (is-eq (- (get amount current-allocation) amount) u0)
+                (- (get strategies-count user-portfolio) u1)
+                (get strategies-count user-portfolio))
+        }))
+        
+        ;; Update user strategy allocation
+        (let ((new-amount (- (get amount current-allocation) amount)))
+            (if (is-eq new-amount u0)
+                (map-delete user-strategy-allocations {user: tx-sender, strategy-id: strategy-id})
+                (map-set user-strategy-allocations {user: tx-sender, strategy-id: strategy-id} 
+                    (merge current-allocation {amount: new-amount}))
+            )
+        )
+        
+        ;; Update strategy performance
+        (let ((perf (unwrap! (map-get? strategy-performance strategy-id) ERR_STRATEGY_NOT_FOUND)))
+            (map-set strategy-performance strategy-id (merge perf {
+                total-withdrawals: (+ (get total-withdrawals perf) amount)
+            }))
+        )
+        
+        (var-set total-tvl (- (var-get total-tvl) amount))
+        (ok true)
+    )
+)
+
+(define-public (emergency-withdraw)
+    (let 
+        (
+            (user-portfolio (unwrap! (map-get? user-portfolios tx-sender) ERR_INSUFFICIENT_BALANCE))
+            (total-locked (get total-locked user-portfolio))
+            (current-block (- stacks-block-height u0))
+        )
+        (asserts! (> total-locked u0) ERR_INSUFFICIENT_BALANCE)
+        
+        ;; Unlock all sBTC tokens
+        (try! (contract-call? sbtc-token-contract protocol-unlock total-locked tx-sender yield-manager-role))
+        
+        ;; Update user portfolio with emergency exit timestamp
+        (map-set user-portfolios tx-sender (merge user-portfolio {
+            total-locked: u0,
+            emergency-exit-time: (some current-block),
+            strategies-count: u0
+        }))
+        
+        (var-set total-tvl (- (var-get total-tvl) total-locked))
+        (ok total-locked)
+    )
+)
