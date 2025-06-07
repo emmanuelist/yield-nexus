@@ -432,3 +432,37 @@
 (define-read-only (get-strategy-performance (strategy-id uint))
     (map-get? strategy-performance strategy-id)
 )
+
+(define-read-only (calculate-yields (user principal))
+    (let ((user-portfolio (map-get? user-portfolios user)))
+        (match user-portfolio
+            portfolio (ok (get total-locked portfolio))
+            (ok u0)
+        )
+    )
+)
+
+(define-read-only (get-total-tvl)
+    (var-get total-tvl)
+)
+
+(define-read-only (get-protocol-stats)
+    {
+        total-strategies: (var-get total-strategies),
+        total-tvl: (var-get total-tvl),
+        protocol-fee: (var-get protocol-fee),
+        emergency-mode: (var-get emergency-mode),
+        rebalance-enabled: (var-get rebalance-enabled),
+    }
+)
+
+(define-read-only (is-strategy-active (strategy-id uint))
+    (match (map-get? strategies strategy-id)
+        strategy (get is-active strategy)
+        false
+    )
+)
+
+(define-read-only (get-available-strategies)
+    (var-get total-strategies)
+)
