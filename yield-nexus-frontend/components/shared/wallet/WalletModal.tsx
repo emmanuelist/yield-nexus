@@ -396,7 +396,6 @@ const WalletConnectModal: React.FC<WalletConnectModalProps> = ({
         </AnimatePresence>
     );
 
-    // Use createPortal to render at document.body level
     return createPortal(modalContent, document.body);
 };
 
