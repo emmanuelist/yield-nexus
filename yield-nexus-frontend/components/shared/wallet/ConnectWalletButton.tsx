@@ -11,12 +11,16 @@ import WalletConnectModal from "./WalletModal";
 
 interface ConnectWalletButtonProps {
     buttonClass?: string;
+    textStyle?: string;
+    iconClass?: string;
     className?: string;
     onOpenModal?: () => void;
 }
 
 const ConnectWalletButton: React.FC<ConnectWalletButtonProps> = ({
     buttonClass,
+    textStyle = "mr-3 text-sm",
+    iconClass,
     className,
     onOpenModal
 }) => {
@@ -134,10 +138,10 @@ const ConnectWalletButton: React.FC<ConnectWalletButtonProps> = ({
                                     `relative flex items-center justify-between bg-gradient-to-r ${buttonStyle} rounded-full pl-5 pr-3 py-2 font-medium tracking-wide border border-[#F7931A]/20 ${buttonClass}`
                                 )}
                             >
-                                <span className="mr-3 text-sm">Connect Wallet</span>
+                                <span className={`${textStyle} `}>Connect Wallet</span>
 
                                 {/* Circle with wallet icon */}
-                                <div className={cn("flex items-center justify-center rounded-full h-7 w-7 border border-[#F7931A]/30", iconStyle)}>
+                                <div className={cn(`flex items-center justify-center rounded-full ${iconClass} h-7 w-7 border border-[#F7931A]/30`, iconStyle)}>
                                     <motion.div
                                         initial={{ x: 0 }}
                                         whileHover={{ x: 1 }}

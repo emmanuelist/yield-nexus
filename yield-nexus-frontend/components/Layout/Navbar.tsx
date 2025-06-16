@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Menu, ChevronDown, ArrowRight, LineChart, Trophy, BarChart3, Layers, Zap } from "lucide-react";
+import { Menu, ChevronDown, ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     DropdownMenu,
