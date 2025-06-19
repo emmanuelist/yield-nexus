@@ -1,3 +1,4 @@
+import YieldNexusCtaSection from "@/components/Landing/CTA/YieldNexusCtaSection";
 import YieldNexusFeatures from "@/components/Landing/Features/YieldNexusFeatures";
 import YieldNexusHero from "@/components/Landing/Hero/YieldNexusHero";
 import YieldNexusHowItWorks from "@/components/Landing/HowItWorks/YieldNexusHowItWorks";
@@ -8,6 +9,7 @@ export default function Home() {
       <YieldNexusHero />
       <YieldNexusFeatures />
       <YieldNexusHowItWorks />
+      <YieldNexusCtaSection />
     </>
   );
 }
