@@ -119,8 +119,16 @@ describe("Yield Strategy Manager Contract", () => {
         contractOwner
       );
       
-      const statsValue = stats.result as any;
-      expect(statsValue.data["emergency-mode"]).toEqual(Cl.bool(true));
+      // Fix: Access the tuple data correctly
+      expect(stats.result).toEqual(
+        Cl.tuple({
+          "total-strategies": Cl.uint(0),
+          "total-tvl": Cl.uint(0),
+          "protocol-fee": Cl.uint(100),
+          "emergency-mode": Cl.bool(true),
+          "rebalance-enabled": Cl.bool(true)
+        })
+      );
     });
 
     it("should allow owner to toggle rebalance", () => {
@@ -141,8 +149,16 @@ describe("Yield Strategy Manager Contract", () => {
         contractOwner
       );
       
-      const statsValue = stats.result as any;
-      expect(statsValue.data["rebalance-enabled"]).toEqual(Cl.bool(false));
+      // Fix: Access the tuple data correctly
+      expect(stats.result).toEqual(
+        Cl.tuple({
+          "total-strategies": Cl.uint(0),
+          "total-tvl": Cl.uint(0),
+          "protocol-fee": Cl.uint(100),
+          "emergency-mode": Cl.bool(false),
+          "rebalance-enabled": Cl.bool(false)  // This should now be false
+        })
+      );
     });
   });
 
