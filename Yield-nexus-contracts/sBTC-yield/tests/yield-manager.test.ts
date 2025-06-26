@@ -431,3 +431,110 @@ describe("Yield Strategy Manager Contract", () => {
       
       expect(result).toBeErr(Cl.uint(404)); // ERR_INVALID_AMOUNT
     });
+
+    it("should reject deposit with invalid target percentage", () => {
+      // First register a strategy
+      simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Percentage Test"),
+          Cl.principal(strategyContract),
+          Cl.uint(1),
+          Cl.uint(500),
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "deposit-to-strategy",
+        [
+          Cl.uint(1),
+          Cl.uint(10000),
+          Cl.uint(10001) // Above max percentage
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(409)); // ERR_INVALID_PERCENTAGE
+    });
+
+    it("should reject withdrawal with invalid strategy ID", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "withdraw-from-strategy",
+        [
+          Cl.uint(0), // Invalid strategy ID
+          Cl.uint(5000)
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(413)); // ERR_INVALID_STRATEGY_ID
+    });
+
+    it("should reject withdrawal with zero amount", () => {
+      // First register a strategy
+      simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Withdrawal Test"),
+          Cl.principal(strategyContract),
+          Cl.uint(1),
+          Cl.uint(500),
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "withdraw-from-strategy",
+        [
+          Cl.uint(1),
+          Cl.uint(0) // Zero amount
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(404)); // ERR_INVALID_AMOUNT
+    });
+  });
+
+  describe("Emergency Functions", () => {
+    it("should reject operations when in emergency mode", () => {
+      // Register a strategy first
+      simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Emergency Test"),
+          Cl.principal(strategyContract),
+          Cl.uint(1),
+          Cl.uint(500),
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+
+      // Enable emergency mode
+      simnet.callPublicFn(
+        contractName,
+        "toggle-emergency-mode",
+        [],
+        contractOwner
+      );
+
+      // Try to deposit - should fail
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "deposit-to-strategy",
+        [Cl.uint(1), Cl.uint(10000), Cl.uint(5000)],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(401)); // ERR_NOT_AUTHORIZED
+    });
