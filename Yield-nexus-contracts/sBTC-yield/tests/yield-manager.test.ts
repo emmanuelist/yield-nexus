@@ -196,3 +196,115 @@ describe("Yield Strategy Manager Contract", () => {
       
       expect(result).toBeErr(Cl.uint(414)); // ERR_INVALID_NAME
     });
+
+    it("should reject strategy registration with excessive APY", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("High APY Strategy"),
+          Cl.principal(strategyContract),
+          Cl.uint(3),
+          Cl.uint(50001), // Above max APY
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+      
+      expect(result).toBeErr(Cl.uint(409)); // ERR_INVALID_PERCENTAGE
+    });
+
+    it("should not allow non-owner to register strategy", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Unauthorized Strategy"),
+          Cl.principal(strategyContract),
+          Cl.uint(3),
+          Cl.uint(1000),
+          Cl.uint(1000000)
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(401)); // ERR_NOT_AUTHORIZED
+    });
+
+    it("should allow owner to update strategy status", () => {
+      // First register a strategy
+      simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Test Strategy"),
+          Cl.principal(strategyContract),
+          Cl.uint(3),
+          Cl.uint(1000),
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+
+      // Then update its status
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "update-strategy-status",
+        [Cl.uint(1), Cl.bool(false)],
+        contractOwner
+      );
+      
+      expect(result).toBeOk(Cl.bool(true));
+    });
+
+    it("should reject strategy status update for non-existent strategy", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "update-strategy-status",
+        [Cl.uint(999), Cl.bool(false)],
+        contractOwner
+      );
+      
+      expect(result).toBeErr(Cl.uint(402)); // ERR_STRATEGY_NOT_FOUND
+    });
+  });
+
+  describe("Read-Only Functions", () => {
+    beforeEach(() => {
+      // Register a test strategy for read tests
+      simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Read Test Strategy"),
+          Cl.principal(strategyContract),
+          Cl.uint(2),
+          Cl.uint(800),
+          Cl.uint(500000)
+        ],
+        contractOwner
+      );
+    });
+
+    it("should return strategy details", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "get-strategy",
+        [Cl.uint(1)],
+        user1
+      );
+      
+      expect(result).toBeSome(
+        Cl.tuple({
+          name: Cl.stringAscii("Read Test Strategy"),
+          "contract-address": Cl.principal(strategyContract),
+          "risk-level": Cl.uint(2),
+          "expected-apy": Cl.uint(800),
+          "current-tvl": Cl.uint(0),
+          "max-tvl": Cl.uint(500000),
+          "is-active": Cl.bool(true),
+          "created-at": Cl.uint(simnet.blockHeight),
+          "last-updated": Cl.uint(simnet.blockHeight)
+        })
+      );
+    });
