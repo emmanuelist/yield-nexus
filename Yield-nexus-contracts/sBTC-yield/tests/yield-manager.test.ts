@@ -308,3 +308,126 @@ describe("Yield Strategy Manager Contract", () => {
         })
       );
     });
+
+    it("should return none for non-existent strategy", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "get-strategy",
+        [Cl.uint(999)],
+        user1
+      );
+      
+      expect(result).toBeNone();
+    });
+
+    it("should check if strategy is active", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "is-strategy-active",
+        [Cl.uint(1)],
+        user1
+      );
+      
+      expect(result).toBeBool(true);
+    });
+
+    it("should return false for non-existent strategy active check", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "is-strategy-active",
+        [Cl.uint(999)],
+        user1
+      );
+      
+      expect(result).toBeBool(false);
+    });
+
+    it("should return available strategies count", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "get-available-strategies",
+        [],
+        user1
+      );
+      
+      expect(result).toBeUint(1);
+    });
+
+    it("should return none for user portfolio when user has no deposits", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "get-user-portfolio",
+        [Cl.principal(user1)],
+        user1
+      );
+      
+      expect(result).toBeNone();
+    });
+
+    it("should return none for user strategy allocation when user has no allocation", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "get-user-strategy-allocation",
+        [Cl.principal(user1), Cl.uint(1)],
+        user1
+      );
+      
+      expect(result).toBeNone();
+    });
+
+    it("should calculate yields for user with no portfolio", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "calculate-yields",
+        [Cl.principal(user1)],
+        user1
+      );
+      
+      expect(result).toBeOk(Cl.uint(0));
+    });
+  });
+
+  describe("Input Validation", () => {
+    it("should reject deposit with invalid strategy ID", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "deposit-to-strategy",
+        [
+          Cl.uint(0), // Invalid strategy ID
+          Cl.uint(10000),
+          Cl.uint(5000)
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(413)); // ERR_INVALID_STRATEGY_ID
+    });
+
+    it("should reject deposit with amount below minimum", () => {
+      // First register a strategy
+      simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Min Deposit Test"),
+          Cl.principal(strategyContract),
+          Cl.uint(1),
+          Cl.uint(500),
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "deposit-to-strategy",
+        [
+          Cl.uint(1),
+          Cl.uint(999), // Below minimum
+          Cl.uint(5000)
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(404)); // ERR_INVALID_AMOUNT
+    });
