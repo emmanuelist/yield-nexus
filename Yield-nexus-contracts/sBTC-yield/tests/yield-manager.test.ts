@@ -98,3 +98,101 @@ describe("Yield Strategy Manager Contract", () => {
       );
       
       expect(result).toBeErr(Cl.uint(401)); // ERR_NOT_AUTHORIZED
+      });
+
+    it("should allow owner to toggle emergency mode", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "toggle-emergency-mode",
+        [],
+        contractOwner
+      );
+      
+      expect(result).toBeOk(Cl.bool(true));
+      
+      // Verify emergency mode was toggled
+      const stats = simnet.callReadOnlyFn(
+        contractName,
+        "get-protocol-stats",
+        [],
+        contractOwner
+      );
+      
+      const statsObj = stats.result as any;
+      expect(statsObj.data["emergency-mode"]).toStrictEqual(Cl.bool(true));
+    });
+
+    it("should allow owner to toggle rebalance", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "toggle-rebalance",
+        [],
+        contractOwner
+      );
+      
+      expect(result).toBeOk(Cl.bool(true));
+      
+      // Verify rebalance was toggled
+      const stats = simnet.callReadOnlyFn(
+        contractName,
+        "get-protocol-stats",
+        [],
+        contractOwner
+      );
+      
+      const statsObj = stats.result as any;
+      expect(statsObj.data["rebalance-enabled"]).toStrictEqual(Cl.bool(false));
+    });
+  });
+
+  describe("Strategy Management", () => {
+    it("should allow owner to register a new strategy", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Test Strategy"),
+          Cl.principal(strategyContract),
+          Cl.uint(3), // Medium risk
+          Cl.uint(1000), // 10% APY
+          Cl.uint(1000000) // Max TVL
+        ],
+        contractOwner
+      );
+      
+      expect(result).toBeOk(Cl.uint(1)); // First strategy ID
+    });
+
+    it("should reject strategy registration with invalid risk level", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Invalid Strategy"),
+          Cl.principal(strategyContract),
+          Cl.uint(6), // Invalid risk level
+          Cl.uint(1000),
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+      
+      expect(result).toBeErr(Cl.uint(409)); // ERR_INVALID_PERCENTAGE
+    });
+
+    it("should reject strategy registration with empty name", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii(""),
+          Cl.principal(strategyContract),
+          Cl.uint(3),
+          Cl.uint(1000),
+          Cl.uint(1000000)
+        ],
+        contractOwner
+      );
+      
+      expect(result).toBeErr(Cl.uint(414)); // ERR_INVALID_NAME
+    });
