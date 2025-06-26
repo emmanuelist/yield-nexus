@@ -538,3 +538,108 @@ describe("Yield Strategy Manager Contract", () => {
       
       expect(result).toBeErr(Cl.uint(401)); // ERR_NOT_AUTHORIZED
     });
+
+    it("should allow emergency withdrawal when user has insufficient balance", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "emergency-withdraw",
+        [],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(405)); // ERR_INSUFFICIENT_BALANCE
+    });
+  });
+
+  describe("Performance Tracking", () => {
+    it("should initialize strategy performance on registration", () => {
+      // Register a strategy
+      simnet.callPublicFn(
+        contractName,
+        "register-strategy",
+        [
+          Cl.stringAscii("Performance Test"),
+          Cl.principal(strategyContract),
+          Cl.uint(3),
+          Cl.uint(1200),
+          Cl.uint(2000000)
+        ],
+        contractOwner
+      );
+
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "get-strategy-performance",
+        [Cl.uint(1)],
+        user1
+      );
+      
+      expect(result).toBeSome(
+        Cl.tuple({
+          "actual-apy": Cl.uint(0),
+          "total-yield-generated": Cl.uint(0),
+          "total-deposits": Cl.uint(0),
+          "total-withdrawals": Cl.uint(0),
+          "performance-score": Cl.uint(50)
+        })
+      );
+    });
+
+    it("should return none for performance of non-existent strategy", () => {
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "get-strategy-performance",
+        [Cl.uint(999)],
+        user1
+      );
+      
+      expect(result).toBeNone();
+    });
+  });
+
+  describe("Rebalancing", () => {
+    it("should reject rebalance with insufficient balance", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "rebalance-portfolio",
+        [
+          Cl.list([
+            Cl.tuple({
+              "strategy-id": Cl.uint(1),
+              "target-percentage": Cl.uint(10000)
+            })
+          ])
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(405)); // ERR_INSUFFICIENT_BALANCE
+    });
+
+    it("should reject rebalance when disabled", () => {
+      // Disable rebalancing
+      simnet.callPublicFn(
+        contractName,
+        "toggle-rebalance",
+        [],
+        contractOwner
+      );
+
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "rebalance-portfolio",
+        [
+          Cl.list([
+            Cl.tuple({
+              "strategy-id": Cl.uint(1),
+              "target-percentage": Cl.uint(10000)
+            })
+          ])
+        ],
+        user1
+      );
+      
+      expect(result).toBeErr(Cl.uint(401)); // ERR_NOT_AUTHORIZED
+    });
+  });
+});
