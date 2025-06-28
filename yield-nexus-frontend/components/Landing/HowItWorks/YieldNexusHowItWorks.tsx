@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bitcoin, LockIcon, BarChart3, Wallet, Zap, Layers } from 'lucide-react';
+import { Bitcoin, LockIcon, BarChart3, Wallet, Zap } from 'lucide-react';
 
 const YieldNexusHowItWorks: React.FC = () => {
     const [activeStep, setActiveStep] = useState(0);

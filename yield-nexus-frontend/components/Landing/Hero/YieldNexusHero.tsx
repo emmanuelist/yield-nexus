@@ -111,6 +111,7 @@ const YieldNexusHero: React.FC = () => {
                         >
                             <ConnectWalletButton buttonClass="px-3 py-1 gap-2 uppercase  md:px-5 md:py-1.5" textStyle="md:!text-sm text-[0.7rem]" iconClass="!h-6 !w-6 md:!h-7 md:!w-7" />
                             <GetItNowButton />
+
                         </motion.div>
 
                         {/* Stacks-Focused Trust Indicators */}
