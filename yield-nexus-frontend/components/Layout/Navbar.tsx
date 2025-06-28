@@ -43,8 +43,6 @@ const Navbar: React.FC<NavbarProps> = ({
     const [dropdownOpen, setDropdownOpen] = useState<number | null>(null);
     const [time, setTime] = useState(0);
 
-    const { userState, connectWallet, disconnectWallet } = useUser();
-
     // Time-based animation for gradient blobs
     useEffect(() => {
         const interval = setInterval(() => {
