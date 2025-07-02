@@ -13,7 +13,7 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
 
     // Navigation links (move this from Navbar)
     const navLinks = [
-        { name: "Dashboard", href: "/dashboard", icon: <BarChart3 className="w-4 h-4 mr-2" /> },
+        { name: "Dashboard", href: "/users/dashboard", icon: <BarChart3 className="w-4 h-4 mr-2" /> },
         {
             name: "Strategies",
             href: "#strategies",
