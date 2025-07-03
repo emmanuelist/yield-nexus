@@ -154,7 +154,7 @@ const Navbar: React.FC<NavbarProps> = ({
             animate="visible"
             variants={navVariants}
             className={cn(
-                "fixed top-0 left-0 right-0 z-[9999] w-full transition-all duration-300 overflow-hidden",
+                "fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300",
                 scrolled
                     ? "backdrop-blur-xl border-b border-white/20 dark:border-slate-700/50 shadow-lg shadow-black/5 dark:shadow-slate-900/20"
                     : "backdrop-blur-sm"
