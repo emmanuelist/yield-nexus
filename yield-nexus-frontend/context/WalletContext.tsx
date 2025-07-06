@@ -86,7 +86,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return stxBalance;
     } catch (error) {
       console.error("Error fetching STX balance:", error);
-      return '0';
+      throw error;
     }
   };
 
@@ -97,7 +97,8 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return balance.toString() || '0';
     } catch (error) {
       console.error("Error fetching sBTC balance:", error);
-      return '0';
+      // return '0';
+      throw error;
     }
   };
 
@@ -109,28 +110,23 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return (balance / 100000000).toString();
     } catch (error) {
       console.error("Error fetching BTC balance:", error);
-      return '0';
+      // return '0';
+      throw error;
     }
   };
 
-  const fetchAllBalances = async (stxAddress: string, btcAddress: string) => {
-  try {
-    const [stxBalance, sbtcBalance, btcBalance] = await Promise.all([
-      fetchSTXBalance(stxAddress),
-      fetchSBTCBalance(stxAddress),
-      fetchBTCBalance(btcAddress)
-    ]);
-    
-    // Only update if we got valid data
-    setBalances({
-      stx: stxBalance,
-      sbtc: sbtcBalance,
-      btc: btcBalance
-    });
-  } catch (error) {
-    console.error("Error fetching balances:", error);
-    // Don't update balances on error - keep existing values
-  }
+const fetchAllBalances = async (stxAddress: string, btcAddress: string) => {
+  const results = await Promise.allSettled([
+    fetchSTXBalance(stxAddress),
+    fetchSBTCBalance(stxAddress),
+    fetchBTCBalance(btcAddress)
+  ]);
+  
+  setBalances(prev => ({
+    stx: results[0].status === 'fulfilled' ? results[0].value : prev.stx,
+    sbtc: results[1].status === 'fulfilled' ? results[1].value : prev.sbtc,
+    btc: results[2].status === 'fulfilled' ? results[2].value : prev.btc
+  }));
 };
 
   const connectWallet = async () => {

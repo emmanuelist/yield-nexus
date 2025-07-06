@@ -205,14 +205,17 @@ const YieldVaultDashboardLayout: React.FC<DashboardLayoutProps> = ({ children })
                             )}
 
                             {/* sBTC Stats */}
-                            <div className="hidden md:flex items-center ml-2">
+                            <div className="hidden md:flex items-center">
                                 <div className="flex items-center space-x-4">
-                                    <div className="flex items-center space-x-2 text-[#F7931A]">
-                                        <Bitcoin className="h-4 w-4" />
-                                        <span className="text-xs font-medium">sBTC: {formatBalance(balances?.sbtc)}</span>
-                                    </div>
-                                    <div className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium">
-                                        +5.23%
+                                    <div className={cn(
+                                        "hidden sm:flex mr-2 items-center rounded-full px-2.5 py-1 border",
+                                        "dark:bg-gradient-to-r dark:from-[#0c1e5c]/80 dark:to-[#192559]/80 dark:text-indigo-300 dark:border-[#F7931A]/20 bg-blue-50 text-indigo-700 border-[#F7931A]/20"
+                                        )}>
+                                        <Bitcoin className={cn("h-3.5 w-3.5 mr-1", "text-[#F7931A]")} />
+                                        <span className="font-medium text-xs">{formatBalance(balances.stx)} sBTC</span>
+                                        <div className="text-xs ml-2 px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium">
+                                            +5.23%
+                                        </div>
                                     </div>
                                 </div>
                             </div>
