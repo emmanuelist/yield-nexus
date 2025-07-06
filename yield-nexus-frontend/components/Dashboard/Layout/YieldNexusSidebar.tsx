@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useTheme } from "next-themes";
 import YieldNexusLogo from "@/components/shared/YieldNexusLogo";
+import { useWallet } from "@/context/WalletContext";
+import { useRouter } from "next/navigation";
 
 interface NavItem {
     name: string;
@@ -67,6 +69,15 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
     const pathname = usePathname();
     const { theme } = useTheme();
     const isDark = theme === 'dark';
+
+    const router = useRouter();
+
+    const { disconnectWallet } = useWallet();
+
+    const handleDisconnect = () => {
+        disconnectWallet();
+        router.push("/");
+    };
 
     // Navigation groups
     const mainNavItems: NavItem[] = [
@@ -353,9 +364,7 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
 
     // Background styles based on theme
     const sidebarBackground = "bg-gradient-to-br dark:from-slate-900 dark:to-[#0A0E1F] from-slate-50 to-slate-100 border-y dark:border-slate-800/50 border-slate-200/70"
-    // const sidebarBackground = isDark
-    //     ? "bg-gradient-to-b from-[#040d36] to-[#0A0E1F] border-r border-slate-800/50"
-    //     : "bg-gradient-to-b from-slate-50 to-white border-r border-slate-200/50";
+    
 
     return (
         <div
@@ -428,6 +437,7 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
                 )}
 
                 <Button
+                    onClick={handleDisconnect}
                     variant="ghost"
                     className={cn(
                         "w-full justify-start gap-x-3 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700 dark:hover:text-red-300",

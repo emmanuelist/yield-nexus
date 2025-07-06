@@ -27,23 +27,42 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
+import { useWallet } from "@/context/WalletContext";
+import { useRouter } from "next/navigation";
 
-// This is a placeholder component. In a real implementation, you would connect 
-// this to your wallet and user state management system.
+
 
 const UserProfileDropdown: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [copied, setCopied] = useState(false);
 
-    // Placeholder user data - in a real implementation, this would come from your auth/wallet state
+    const { 
+        addresses, 
+        balances, 
+        disconnectWallet,
+    } = useWallet();
+
+    const router = useRouter();
+
+    const formatBalance = (balance: string, decimals: number = 6) => {
+        const num = parseFloat(balance);
+        return num > 0 ? num.toFixed(decimals) : "0.00";
+    };
+
+    const formatAddress = (addr: string) => {
+        if (!addr || addr.length <= 10) return addr;
+        return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+    };
+
+
     const user = {
         name: "Alex Johnson",
         email: "alex@example.com",
-        walletAddress: "0x71A2...9e3f",
+        walletAddress: formatAddress(addresses?.stx || ""),
         avatarUrl: "",
         isPremium: true,
         joinDate: new Date("2023-07-15"),
-        sbtcBalance: "0.25678"
+        sbtcBalance: formatBalance(balances?.sbtc || "0"),
     };
 
     // Helper to truncate ETH addresses
@@ -52,14 +71,23 @@ const UserProfileDropdown: React.FC = () => {
         return `${address.slice(0, 6)}...${address.slice(-4)}`;
     };
 
-    const copyAddressToClipboard = () => {
-        navigator.clipboard.writeText(user.walletAddress);
-        setCopied(true);
+    const copyAddressToClipboard = async () => {
+        if (addresses?.stx) {
+            try {
+                await navigator.clipboard.writeText(addresses.stx);
+                setCopied(true);
+                setTimeout(() => { setCopied(false); }, 2000);
+            }
+            catch (error) {
+                console.error("Failed to copy address:", error);
+            }
+        }
+    };
 
-        // Reset the copied state after 2 seconds
-        setTimeout(() => {
-            setCopied(false);
-        }, 2000);
+    const handleDisconnect = () => {
+        disconnectWallet();
+        setIsOpen(false);
+        router.push("/");
     };
 
     return (
@@ -223,6 +251,7 @@ const UserProfileDropdown: React.FC = () => {
                     {/* Logout */}
                     <div className="p-2">
                         <Button
+                            onClick={handleDisconnect}
                             variant="ghost"
                             className="w-full justify-start h-9 px-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700 dark:hover:text-red-300"
                         >

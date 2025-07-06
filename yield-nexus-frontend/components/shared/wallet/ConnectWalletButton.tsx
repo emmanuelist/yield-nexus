@@ -36,20 +36,12 @@ const ConnectWalletButton: React.FC<ConnectWalletButtonProps> = ({
     addresses, 
     balances, 
     disconnectWallet,
-    refreshBalances,
     connectWallet
   } = useWallet();
   const isDark = theme === "dark";
 
   const router = useRouter();
 
-
-  // Refresh balances when wallet is connected
-  useEffect(() => {
-    if (isConnected && addresses?.stx) {
-      refreshBalances();
-    }
-  }, [isConnected, addresses?.stx, refreshBalances]);
 
   const formatBalance = (balance: string, decimals: number = 6) => {
     const num = parseFloat(balance);
@@ -176,8 +168,8 @@ const ConnectWalletButton: React.FC<ConnectWalletButtonProps> = ({
                   enableDropdown 
                     ? "bg-gradient-to-r from-[#0c1e5c]/95 to-[#192559]/95 hover:from-[#192559]/95 hover:to-[#0c1e5c]/95 border-[#F7931A]/20"
                     : isDark
-                      ? "bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 hover:from-blue-600 hover:via-indigo-600 hover:to-purple-600 border-indigo-400/50 shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-400/50 hover:scale-105"
-                      : "bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 hover:from-blue-600 hover:via-indigo-600 hover:to-purple-600 border-indigo-400/50 shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-400/50 hover:scale-105"
+                      ? "bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 "
+                      : "bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 "
                 )}
               >
                 {enableDropdown ? (
@@ -313,7 +305,6 @@ const ConnectWalletButton: React.FC<ConnectWalletButtonProps> = ({
             )}
 
             <div className="space-y-0.5">
-              {/* Vault Dashboard */}
               <button
                 onClick={() => router.push("/users/dashboard")}
                 className={cn(

@@ -7,8 +7,6 @@ import {
     ChevronRight,
     ChevronLeft,
     Bitcoin,
-    Sun,
-    Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,6 +16,7 @@ import NotificationsDropdown from "@/components/Dashboard/Notifications/Notifica
 import UserProfileDropdown from "@/components/Dashboard/Profile/UserProfileDropdown";
 import YieldNexusSidebar from "@/components/Dashboard/Layout/YieldNexusSidebar";
 import ThemeToggle from "@/components/shared/ThemeToggle";
+import { useWallet } from "@/context/WalletContext";
 
 
 
@@ -30,7 +29,13 @@ const YieldVaultDashboardLayout: React.FC<DashboardLayoutProps> = ({ children })
     const [isMobile, setIsMobile] = useState(false);
     const [navScrolled, setNavScrolled] = useState(false);
     const { theme, setTheme } = useTheme();
-    const isDark = theme === 'dark';
+
+    const { balances } = useWallet();
+
+    const formatBalance = (balance: string, decimals: number = 6) => {
+        const num = parseFloat(balance);
+        return num > 0 ? num.toFixed(decimals) : "0.00";
+    };
 
     // Handle window resize to detect mobile view
     useEffect(() => {
@@ -204,7 +209,7 @@ const YieldVaultDashboardLayout: React.FC<DashboardLayoutProps> = ({ children })
                                 <div className="flex items-center space-x-4">
                                     <div className="flex items-center space-x-2 text-[#F7931A]">
                                         <Bitcoin className="h-4 w-4" />
-                                        <span className="text-xs font-medium">sBTC: $35,240.61</span>
+                                        <span className="text-xs font-medium">sBTC: {formatBalance(balances?.sbtc)}</span>
                                     </div>
                                     <div className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium">
                                         +5.23%
@@ -229,7 +234,7 @@ const YieldVaultDashboardLayout: React.FC<DashboardLayoutProps> = ({ children })
 
                 {/* Page Content */}
                 <div className="flex-1 overflow-auto">
-                    <div className="container mx-auto py-6 px-4 md:px-6">
+                    <div className="container mx-auto py-6 px-4 md:px-6 bg-gradient-to-br dark:from-slate-900 dark:to-[#0A0E1F] from-slate-50 to-slate-100">
                         {children}
                     </div>
                 </div>

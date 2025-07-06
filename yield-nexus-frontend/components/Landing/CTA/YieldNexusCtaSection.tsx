@@ -137,7 +137,7 @@ const YieldNexusCtaSection: React.FC = () => {
                             </div>
 
                             <div className="flex flex-row gap-4">
-                                <ConnectWalletButton />
+                                <ConnectWalletButton enableDropdown={false} />
                                 <GetItNowButton />
                             </div>
                         </motion.div>
