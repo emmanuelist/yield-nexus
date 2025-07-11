@@ -62,7 +62,7 @@ const UserProfileDropdown: React.FC = () => {
         avatarUrl: "",
         isPremium: true,
         joinDate: new Date("2023-07-15"),
-        sbtcBalance: formatBalance(balances?.sbtc || "0"),
+        sbtcBalance: formatBalance(balances?.stx || "0"),
     };
 
     // Helper to truncate ETH addresses

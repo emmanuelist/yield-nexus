@@ -83,7 +83,7 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
     const mainNavItems: NavItem[] = [
         {
             name: "Dashboard",
-            href: "/dashboard",
+            href: "/users/dashboard",
             icon: <Home className="h-5 w-5" />,
         },
         {
@@ -93,24 +93,39 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
             subItems: [
                 {
                     name: "Overview",
-                    href: "/dashboard/portfolio/overview",
+                    href: "/users/dashboard/portfolio/overview",
                     icon: <BarChart3 className="h-4 w-4" />,
                 },
                 {
                     name: "Performance",
-                    href: "/dashboard/portfolio/performance",
+                    href: "/users/dashboard/portfolio/performance",
                     icon: <LineChart className="h-4 w-4" />,
                 },
                 {
                     name: "Rewards",
-                    href: "/dashboard/portfolio/rewards",
+                    href: "/users/dashboard/portfolio/rewards",
                     icon: <Bitcoin className="h-4 w-4" />,
-                }
+                },
+                {
+                    name: "Analytics",
+                    href: "/users/dashboard/portfolio/analytics",
+                    icon: <BarChart3 className="h-4 w-4" />,
+                },
+                {
+                    name: "History",
+                    href: "/users/dashboard/portfolio/history",
+                    icon: <History className="h-4 w-4" />,
+                },
+                {
+                    name: "Settings",
+                    href: "/users/dashboard/portfolio/settings",
+                    icon: <Settings className="h-4 w-4" />,
+                },
             ],
         },
         {
             name: "Deposit",
-            href: "/dashboard/deposit",
+            href: "/users/dashboard/deposit",
             icon: <Plus className="h-5 w-5" />,
             isNew: true,
         },
@@ -119,7 +134,7 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
     const yieldStrategiesItems: NavItem[] = [
         {
             name: "Active Strategies",
-            href: "/dashboard/strategies/active",
+            href: "/users/dashboard/strategies/active",
             icon: <TrendingUp className="h-5 w-5" />,
             badge: {
                 text: "3",
@@ -128,12 +143,12 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
         },
         {
             name: "Automated Yield",
-            href: "/dashboard/strategies/automated",
+            href: "/users/dashboard/strategies/automated",
             icon: <Zap className="h-5 w-5" />,
         },
         {
             name: "Strategy Builder",
-            href: "/dashboard/strategies/builder",
+            href: "/users/dashboard/strategies/builder",
             icon: <PieChart className="h-5 w-5" />,
             isNew: true,
         }
@@ -142,32 +157,32 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
     const miscNavItems: NavItem[] = [
         {
             name: "Transaction History",
-            href: "/dashboard/history",
+            href: "/users/dashboard/history",
             icon: <History className="h-5 w-5" />,
         },
         {
             name: "Wallet",
-            href: "/dashboard/wallet",
+            href: "/users/dashboard/wallet",
             icon: <Wallet className="h-5 w-5" />,
         },
         {
             name: "Security",
-            href: "/dashboard/security",
+            href: "/users/dashboard/security",
             icon: <ShieldCheck className="h-5 w-5" />,
         },
         {
             name: "Settings",
-            href: "/dashboard/settings",
+            href: "/users/dashboard/settings",
             icon: <Settings className="h-5 w-5" />,
         },
         {
             name: "Documentation",
-            href: "/dashboard/docs",
+            href: "/users/dashboard/docs",
             icon: <BookOpen className="h-5 w-5" />,
         },
         {
             name: "Help",
-            href: "/dashboard/help",
+            href: "/users/dashboard/help",
             icon: <HelpCircle className="h-5 w-5" />,
         },
     ];
@@ -179,10 +194,10 @@ const YieldNexusSidebar: React.FC<YieldNexusSidebarProps> = ({
 
     // Check if a nav item is active
     const isActiveLink = (href: string) => {
-        if (href === "/dashboard" && pathname === "/dashboard") {
+        if (href === "/users/dashboard" && pathname === "/users/dashboard") {
             return true;
         }
-        return pathname.startsWith(href) && href !== "/dashboard";
+        return pathname.startsWith(href) && href !== "/users/dashboard";
     };
 
     // Render a navigation item
