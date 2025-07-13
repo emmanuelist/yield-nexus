@@ -4,6 +4,7 @@ import YieldNexusCtaSection from "@/components/Landing/CTA/YieldNexusCtaSection"
 import YieldNexusFeatures from "@/components/Landing/Features/YieldNexusFeatures";
 import YieldNexusHero from "@/components/Landing/Hero/YieldNexusHero";
 import YieldNexusHowItWorks from "@/components/Landing/HowItWorks/YieldNexusHowItWorks";
+import YieldNexusNewsletterSection from "@/components/Landing/NewsLetter/YieldNexusNewsletterSection";
 import StrategyWizardSBTC from "@/components/Landing/YieldStrategy/StrategyWizardSBTC";
 import YieldStrategySectionSBTC from "@/components/Landing/YieldStrategy/YieldStrategySectionSBTC";
 import { useState } from "react";
@@ -22,6 +23,7 @@ export default function Home() {
       />
 
       <YieldNexusCtaSection />
+      <YieldNexusNewsletterSection />
 
       
       {/* Strategy Wizard Modal */}
