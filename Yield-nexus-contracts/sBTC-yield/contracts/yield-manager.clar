@@ -261,3 +261,135 @@
     )
   )
 )
+
+;; --- READ-ONLY FUNCTIONS ---
+
+;; --- YIELD DISTRIBUTION FUNCTIONS ---
+
+;; Distribute yields from strategies to users
+(define-public (distribute-yields)
+  (let ((time-since-last (- stacks-block-height (var-get last-yield-distribution))))
+    (asserts! (>= time-since-last yield-distribution-interval) ERR_REBALANCE_NOT_NEEDED)
+    (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+    
+    ;; Simulate yield calculation and distribution
+    (let ((total-yield-earned (calculate-total-protocol-yield)))
+      (if (> total-yield-earned u0)
+        (begin
+          ;; Take performance fee
+          (let ((performance-fee-amount (/ (* total-yield-earned performance-fee) u10000))
+                (user-yield (- total-yield-earned performance-fee-amount)))
+            (var-set protocol-treasury (+ (var-get protocol-treasury) performance-fee-amount))
+            (var-set total-yield-generated (+ (var-get total-yield-generated) total-yield-earned))
+            (var-set last-yield-distribution stacks-block-height)
+            (ok { total-yield: total-yield-earned, performance-fee: performance-fee-amount, user-yield: user-yield })
+          )
+        )
+        (ok { total-yield: u0, performance-fee: u0, user-yield: u0 })
+      )
+    )
+  )
+)
+
+;; Calculate pending yields for a user across all strategies
+(define-read-only (calculate-user-pending-yields (user principal))
+  (let ((portfolio (default-to { total-locked: u0, unallocated-balance: u0, last-rebalance: u0, emergency-exit-time: none }
+                   (map-get? user-portfolios user))))
+    ;; Simplified yield calculation - in practice, this would query each strategy
+    (let ((base-yield-rate u500) ;; 5% annual
+          (time-factor (/ (- stacks-block-height (get last-rebalance portfolio)) u52560)) ;; blocks per year
+          (estimated-yield (/ (* (get total-locked portfolio) base-yield-rate time-factor) u10000)))
+      estimated-yield
+    )
+  )
+)
+
+;; Calculate total protocol yield from all strategies
+(define-read-only (calculate-total-protocol-yield)
+  (let ((total-locked (var-get total-tvl))
+        (average-yield-rate u600)) ;; 6% average across all strategies
+    ;; Simplified calculation - in practice, this would aggregate from all strategies
+    (/ (* total-locked average-yield-rate) u10000)
+  )
+)
+
+;; Get comprehensive user summary including yields
+(define-read-only (get-user-summary (user principal))
+  (let ((portfolio (default-to { total-locked: u0, unallocated-balance: u0, last-rebalance: u0, emergency-exit-time: none }
+                   (map-get? user-portfolios user)))
+        (pending-yields (calculate-user-pending-yields user)))
+    (ok {
+      total-deposited: (+ (get total-locked portfolio) (get unallocated-balance portfolio)),
+      actively-earning: (get total-locked portfolio),
+      unallocated: (get unallocated-balance portfolio),
+      pending-yields: pending-yields,
+      estimated-apy: u600, ;; 6% estimated APY
+      last-rebalance: (get last-rebalance portfolio)
+    })
+  )
+)
+
+;; Auto-compound yields for users who enabled it
+(define-public (auto-compound-user-yields (user principal))
+  (let ((pending-yields (calculate-user-pending-yields user)))
+    (if (>= pending-yields auto-compound-threshold)
+      (begin
+        ;; Add yields to unallocated balance for re-investment
+        (let ((portfolio (unwrap! (map-get? user-portfolios user) ERR_INSUFFICIENT_BALANCE)))
+          (map-set user-portfolios user (merge portfolio {
+            unallocated-balance: (+ (get unallocated-balance portfolio) pending-yields),
+            last-rebalance: stacks-block-height
+          }))
+          (ok pending-yields)
+        )
+      )
+      (ok u0)
+    )
+  )
+)
+
+;; --- EXISTING READ-ONLY FUNCTIONS ---
+(define-read-only (get-strategy (id uint)) (map-get? strategies id))
+(define-read-only (get-user-portfolio (user principal)) (map-get? user-portfolios user))
+(define-read-only (get-user-strategy-allocation (user principal) (id uint)) (map-get? user-strategy-allocations { user: user, strategy-id: id }))
+(define-read-only (get-strategy-performance (id uint)) (map-get? strategy-performance id))
+
+;; Additional read-only functions needed by tests
+(define-read-only (get-total-tvl) 
+  (var-get total-tvl))
+
+(define-read-only (is-strategy-active (strategy-id uint))
+  (match (map-get? strategies strategy-id)
+    strategy (get is-active strategy)
+    false))
+
+(define-read-only (get-available-strategies)
+  (- (var-get next-strategy-id) u1))
+
+(define-read-only (calculate-yields (user principal))
+  (calculate-user-pending-yields user))
+
+;; Additional public functions needed by tests
+(define-public (deposit-to-strategy (strategy-id uint) (amount uint) (target-percentage uint))
+  (begin
+    ;; First deposit to protocol
+    (try! (deposit-to-protocol amount))
+    ;; Then allocate to strategy
+    (allocate-to-strategy strategy-id amount)))
+
+(define-public (toggle-rebalance)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+    (var-set rebalance-enabled (not (var-get rebalance-enabled)))
+    (ok (var-get rebalance-enabled))))
+
+(define-read-only (get-protocol-stats) {
+  total-strategies: (- (var-get next-strategy-id) u1),
+  total-tvl: (var-get total-tvl),
+  protocol-fee: (var-get protocol-fee),
+  emergency-mode: (var-get emergency-mode),
+  total-yield-generated: (var-get total-yield-generated),
+  protocol-treasury: (var-get protocol-treasury),
+  last-yield-distribution: (var-get last-yield-distribution),
+  estimated-total-apy: u600 ;; 6% estimated protocol-wide APY
+})
