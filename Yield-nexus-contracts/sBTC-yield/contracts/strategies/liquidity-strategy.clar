@@ -121,3 +121,131 @@
     )
   )
 )
+
+;; Withdraw liquidity and claim trading fees
+(define-public (withdraw (amount uint) (user principal))
+  (let (
+    (pool-id 'SP000000000000000000002Q6VF78) ;; STX pool
+    (position (unwrap! (map-get? lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id }) ERR_INSUFFICIENT_BALANCE))
+    (pool (unwrap! (map-get? liquidity-pools pool-id) ERR_INSUFFICIENT_LIQUIDITY))
+  )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    
+    ;; Update fees before withdrawal
+    (try! (update-fee-distribution user pool-id))
+    
+    ;; Get updated position after fee distribution
+    (let ((updated-position (unwrap! (map-get? lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id }) ERR_INSUFFICIENT_BALANCE)))
+      
+      ;; Calculate LP tokens needed for withdrawal amount
+      (let ((lp-tokens-needed (if (> (get token-a-reserve pool) u0)
+                               (/ (* amount (get total-lp-supply pool)) (get token-a-reserve pool))
+                               u0)))
+        
+        (asserts! (<= lp-tokens-needed (get lp-tokens updated-position)) ERR_INSUFFICIENT_BALANCE)
+        
+        ;; Calculate proportional withdrawal from reserves
+        (let ((sbtc-to-withdraw amount)
+              (stx-to-withdraw (if (> (get total-lp-supply pool) u0)
+                               (/ (* lp-tokens-needed (get token-b-reserve pool)) (get total-lp-supply pool))
+                               u0)))
+          
+          ;; Transfer sBTC back to user
+          (try! (as-contract (contract-call? sbtc-token transfer sbtc-to-withdraw (as-contract tx-sender) user none)))
+          
+          ;; Transfer STX back to user (if any)
+          (if (> stx-to-withdraw u0)
+            (try! (as-contract (stx-transfer? stx-to-withdraw (as-contract tx-sender) user)))
+            (ok true)
+          )
+          
+          ;; Transfer unclaimed fees
+          (if (> (get unclaimed-fees-a updated-position) u0)
+            (try! (as-contract (contract-call? sbtc-token transfer (get unclaimed-fees-a updated-position) (as-contract tx-sender) user none)))
+            (ok true)
+          )
+          
+          ;; Update pool state
+          (map-set liquidity-pools pool-id
+            (merge pool {
+              token-a-reserve: (- (get token-a-reserve pool) sbtc-to-withdraw),
+              token-b-reserve: (- (get token-b-reserve pool) stx-to-withdraw),
+              total-lp-supply: (- (get total-lp-supply pool) lp-tokens-needed)
+            }))
+          
+          ;; Update user position
+          (map-set lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id }
+            (merge updated-position {
+              lp-tokens: (- (get lp-tokens updated-position) lp-tokens-needed),
+              unclaimed-fees-a: u0,
+              unclaimed-fees-b: u0
+            }))
+          
+          (var-set total-value-locked (- (var-get total-value-locked) amount))
+          (ok amount)
+        )
+      )
+    )
+  )
+)
+
+;; Get user's balance including LP value and unclaimed fees
+(define-public (get-balance (user principal))
+  (let (
+    (pool-id 'SP000000000000000000002Q6VF78)
+    (position (default-to { lp-tokens: u0, unclaimed-fees-a: u0, unclaimed-fees-b: u0, last-fee-claim: block-height }
+              (map-get? lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id })))
+    (pool (default-to { token-a-reserve: u0, token-b-reserve: u0, total-lp-supply: u0, fee-accumulated-a: u0, fee-accumulated-b: u0, last-update: block-height }
+          (map-get? liquidity-pools pool-id)))
+  )
+    ;; Calculate LP token value in sBTC
+    (let ((lp-value-sbtc (if (> (get total-lp-supply pool) u0)
+                          (/ (* (get lp-tokens position) (get token-a-reserve pool)) (get total-lp-supply pool))
+                          u0))
+          (pending-fees (calculate-pending-fees user pool-id)))
+      (ok (+ lp-value-sbtc (get unclaimed-fees-a position) pending-fees))
+    )
+  )
+)
+
+;; --- TRADING FUNCTIONS (Simulated DEX Functionality) ---
+
+;; Swap tokens and generate trading fees for LPs
+(define-public (swap-sbtc-for-stx (sbtc-amount uint) (min-stx-out uint))
+  (let ((pool-id 'SP000000000000000000002Q6VF78)
+        (pool (unwrap! (map-get? liquidity-pools pool-id) ERR_POOL_NOT_EXISTS)))
+    
+    (asserts! (> sbtc-amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (> (get token-a-reserve pool) u0) ERR_INSUFFICIENT_LIQUIDITY)
+    
+    ;; Calculate output using constant product formula (x * y = k)
+    ;; Taking 0.3% trading fee
+    (let ((sbtc-after-fee (- sbtc-amount (/ (* sbtc-amount TRADING_FEE_RATE) u10000)))
+          (stx-reserve (get token-b-reserve pool))
+          (sbtc-reserve (get token-a-reserve pool)))
+      
+      (let ((stx-out (/ (* stx-reserve sbtc-after-fee) (+ sbtc-reserve sbtc-after-fee))))
+        (asserts! (>= stx-out min-stx-out) ERR_SLIPPAGE_TOO_HIGH)
+        
+        ;; Transfer sBTC from trader
+        (try! (contract-call? sbtc-token transfer sbtc-amount tx-sender (as-contract tx-sender) none))
+        
+        ;; Transfer STX to trader
+        (try! (as-contract (stx-transfer? stx-out (as-contract tx-sender) tx-sender)))
+        
+        ;; Update pool with new reserves and accumulated fees
+        (let ((trading-fee (- sbtc-amount sbtc-after-fee)))
+          (map-set liquidity-pools pool-id
+            (merge pool {
+              token-a-reserve: (+ sbtc-reserve sbtc-after-fee),
+              token-b-reserve: (- stx-reserve stx-out),
+              fee-accumulated-a: (+ (get fee-accumulated-a pool) trading-fee),
+              last-update: block-height
+            }))
+          
+          (ok { stx-out: stx-out, fee-taken: trading-fee })
+        )
+      )
+    )
+  )
+)
