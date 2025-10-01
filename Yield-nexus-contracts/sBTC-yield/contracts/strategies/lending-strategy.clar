@@ -248,3 +248,96 @@
     )
   )
 )
+
+;; Compound interest for a lender
+(define-private (compound-interest (user principal))
+  (let ((position (default-to { amount-supplied: u0, earned-interest: u0, last-claim: block-height }
+                  (map-get? lender-positions { strategy: (as-contract tx-sender), lender: user }))))
+    (let ((pending-interest (calculate-pending-interest user)))
+      (if (> pending-interest u0)
+        (map-set lender-positions { strategy: (as-contract tx-sender), lender: user }
+          (merge position {
+            earned-interest: (+ (get earned-interest position) pending-interest),
+            last-claim: block-height
+          }))
+        true
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Calculate pending interest for a lender
+(define-read-only (calculate-pending-interest (user principal))
+  (let (
+    (position (default-to { amount-supplied: u0, earned-interest: u0, last-claim: block-height }
+              (map-get? lender-positions { strategy: (as-contract tx-sender), lender: user })))
+    (pool (default-to { total-supplied: u0, total-borrowed: u0, available-liquidity: u0, interest-rate: BASE_INTEREST_RATE, last-update: block-height }
+          (map-get? lending-pools (as-contract tx-sender))))
+  )
+    (let ((blocks-passed (- block-height (get last-claim position)))
+          (annual-rate (get interest-rate pool))
+          (blocks-per-year u52560)) ;; Approximate blocks per year (10 min blocks)
+      (if (and (> (get amount-supplied position) u0) (> blocks-passed u0))
+        (/ (* (* (get amount-supplied position) annual-rate) blocks-passed) (* u10000 blocks-per-year))
+        u0
+      )
+    )
+  )
+)
+
+;; Calculate interest owed on a loan
+(define-read-only (calculate-loan-interest (borrower principal))
+  (let ((loan (default-to { borrowed-amount: u0, collateral-amount: u0, interest-accrued: u0, last-update: block-height }
+              (map-get? borrower-loans { strategy: (as-contract tx-sender), borrower: borrower }))))
+    (let ((blocks-passed (- block-height (get last-update loan)))
+          (annual-rate (+ BASE_INTEREST_RATE u500)) ;; Borrowing rate is higher
+          (blocks-per-year u52560))
+      (if (and (> (get borrowed-amount loan) u0) (> blocks-passed u0))
+        (/ (* (* (get borrowed-amount loan) annual-rate) blocks-passed) (* u10000 blocks-per-year))
+        u0
+      )
+    )
+  )
+)
+
+;; --- READ-ONLY FUNCTIONS ---
+(define-read-only (get-pool-stats)
+  (let ((pool (default-to { total-supplied: u0, total-borrowed: u0, available-liquidity: u0, interest-rate: BASE_INTEREST_RATE, last-update: block-height }
+              (map-get? lending-pools (as-contract tx-sender)))))
+    (ok {
+      total-supplied: (get total-supplied pool),
+      total-borrowed: (get total-borrowed pool),
+      available-liquidity: (get available-liquidity pool),
+      current-interest-rate: (get interest-rate pool),
+      utilization-rate: (if (> (get total-supplied pool) u0)
+                         (/ (* (get total-borrowed pool) u10000) (get total-supplied pool))
+                         u0)
+    })
+  )
+)
+
+(define-read-only (get-lender-info (user principal))
+  (let ((position (default-to { amount-supplied: u0, earned-interest: u0, last-claim: block-height }
+                  (map-get? lender-positions { strategy: (as-contract tx-sender), lender: user }))))
+    (ok {
+      amount-supplied: (get amount-supplied position),
+      earned-interest: (get earned-interest position),
+      pending-interest: (calculate-pending-interest user),
+      last-claim: (get last-claim position)
+    })
+  )
+)
+
+(define-read-only (get-loan-info (borrower principal))
+  (let ((loan (default-to { borrowed-amount: u0, collateral-amount: u0, interest-accrued: u0, last-update: block-height }
+              (map-get? borrower-loans { strategy: (as-contract tx-sender), borrower: borrower }))))
+    (ok {
+      borrowed-amount: (get borrowed-amount loan),
+      collateral-amount: (get collateral-amount loan),
+      interest-accrued: (get interest-accrued loan),
+      pending-interest: (calculate-loan-interest borrower),
+      last-update: (get last-update loan)
+    })
+  )
+)
