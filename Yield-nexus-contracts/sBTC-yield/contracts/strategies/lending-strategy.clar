@@ -130,3 +130,121 @@
     )
   )
 )
+
+;; Get user's balance including earned interest
+(define-public (get-balance (user principal))
+  (let (
+    (position (default-to { amount-supplied: u0, earned-interest: u0, last-claim: block-height }
+              (map-get? lender-positions { strategy: (as-contract tx-sender), lender: user })))
+  )
+    ;; Calculate pending interest
+    (let ((pending-interest (calculate-pending-interest user)))
+      (ok (+ (get amount-supplied position) (get earned-interest position) pending-interest))
+    )
+  )
+)
+
+;; --- BORROWING FUNCTIONS ---
+
+;; Borrow sBTC against STX collateral
+(define-public (borrow (amount uint) (collateral-amount uint))
+  (let (
+    (pool (unwrap! (map-get? lending-pools (as-contract tx-sender)) ERR_INSUFFICIENT_BALANCE))
+    (current-loan (default-to { borrowed-amount: u0, collateral-amount: u0, interest-accrued: u0, last-update: block-height }
+                  (map-get? borrower-loans { strategy: (as-contract tx-sender), borrower: tx-sender })))
+  )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (>= (get available-liquidity pool) amount) ERR_POOL_DEPLETED)
+    
+    ;; Check collateral ratio (simplified: 1 STX = 0.1 sBTC value for demonstration)
+    (let ((total-borrowed (+ (get borrowed-amount current-loan) amount))
+          (total-collateral (+ (get collateral-amount current-loan) collateral-amount))
+          (collateral-value-in-sbtc (/ (* total-collateral u10) u100))) ;; 1 STX = 0.1 sBTC
+      
+      (asserts! (>= (* collateral-value-in-sbtc u100) (* total-borrowed u125)) ERR_INSUFFICIENT_COLLATERAL) ;; 125% collateral ratio
+      
+      ;; Transfer STX collateral to contract
+      (try! (stx-transfer? collateral-amount tx-sender (as-contract tx-sender)))
+      
+      ;; Transfer sBTC to borrower
+      (try! (as-contract (contract-call? sbtc-token transfer amount (as-contract tx-sender) tx-sender none)))
+      
+      ;; Update loan
+      (map-set borrower-loans { strategy: (as-contract tx-sender), borrower: tx-sender }
+        (merge current-loan {
+          borrowed-amount: total-borrowed,
+          collateral-amount: total-collateral,
+          last-update: block-height
+        }))
+      
+      ;; Update pool
+      (map-set lending-pools (as-contract tx-sender)
+        (merge pool {
+          total-borrowed: (+ (get total-borrowed pool) amount),
+          available-liquidity: (- (get available-liquidity pool) amount)
+        }))
+      
+      (ok amount)
+    )
+  )
+)
+
+;; Repay borrowed sBTC
+(define-public (repay (amount uint))
+  (let (
+    (loan (unwrap! (map-get? borrower-loans { strategy: (as-contract tx-sender), borrower: tx-sender }) ERR_LOAN_NOT_FOUND))
+    (pool (unwrap! (map-get? lending-pools (as-contract tx-sender)) ERR_INSUFFICIENT_BALANCE))
+  )
+    ;; Update loan interest
+    (let ((interest-owed (calculate-loan-interest tx-sender)))
+      (let ((total-owed (+ (get borrowed-amount loan) interest-owed))
+            (repay-amount (if (<= amount total-owed) amount total-owed)))
+        
+        ;; Transfer repayment from borrower
+        (try! (contract-call? sbtc-token transfer repay-amount tx-sender (as-contract tx-sender) none))
+        
+        ;; Calculate how much goes to principal vs interest
+        (let ((interest-payment (if (<= repay-amount interest-owed) repay-amount interest-owed))
+              (principal-payment (- repay-amount interest-payment)))
+          
+          ;; Add interest to protocol treasury
+          (var-set protocol-treasury (+ (var-get protocol-treasury) interest-payment))
+          
+          ;; Update loan
+          (map-set borrower-loans { strategy: (as-contract tx-sender), borrower: tx-sender }
+            (merge loan {
+              borrowed-amount: (- (get borrowed-amount loan) principal-payment),
+              interest-accrued: (- (+ (get interest-accrued loan) interest-owed) interest-payment),
+              last-update: block-height
+            }))
+          
+          ;; Update pool
+          (map-set lending-pools (as-contract tx-sender)
+            (merge pool {
+              total-borrowed: (- (get total-borrowed pool) principal-payment),
+              available-liquidity: (+ (get available-liquidity pool) repay-amount)
+            }))
+          
+          (ok repay-amount)
+        )
+      )
+    )
+  )
+)
+
+;; --- HELPER FUNCTIONS ---
+
+;; Update interest rates based on utilization
+(define-private (update-interest-rates)
+  (let ((pool (unwrap! (map-get? lending-pools (as-contract tx-sender)) ERR_INSUFFICIENT_BALANCE)))
+    (let ((utilization-rate (if (> (get total-supplied pool) u0)
+                             (/ (* (get total-borrowed pool) u10000) (get total-supplied pool))
+                             u0)))
+      (let ((new-rate (+ BASE_INTEREST_RATE (/ (* utilization-rate UTILIZATION_MULTIPLIER) u10000))))
+        (map-set lending-pools (as-contract tx-sender)
+          (merge pool { interest-rate: new-rate, last-update: block-height }))
+        (ok true)
+      )
+    )
+  )
+)
