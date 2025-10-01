@@ -249,3 +249,90 @@
     )
   )
 )
+
+;; --- HELPER FUNCTIONS ---
+
+;; Update fee distribution for a user
+(define-private (update-fee-distribution (user principal) (pool-id principal))
+  (let (
+    (position (default-to { lp-tokens: u0, unclaimed-fees-a: u0, unclaimed-fees-b: u0, last-fee-claim: block-height }
+              (map-get? lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id })))
+    (pool (default-to { token-a-reserve: u0, token-b-reserve: u0, total-lp-supply: u0, fee-accumulated-a: u0, fee-accumulated-b: u0, last-update: block-height }
+          (map-get? liquidity-pools pool-id)))
+  )
+    (let ((pending-fees (calculate-pending-fees user pool-id)))
+      (if (> pending-fees u0)
+        (map-set lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id }
+          (merge position {
+            unclaimed-fees-a: (+ (get unclaimed-fees-a position) pending-fees),
+            last-fee-claim: block-height
+          }))
+        true
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Calculate pending fees for a user
+(define-read-only (calculate-pending-fees (user principal) (pool-id principal))
+  (let (
+    (position (default-to { lp-tokens: u0, unclaimed-fees-a: u0, unclaimed-fees-b: u0, last-fee-claim: block-height }
+              (map-get? lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id })))
+    (pool (default-to { token-a-reserve: u0, token-b-reserve: u0, total-lp-supply: u0, fee-accumulated-a: u0, fee-accumulated-b: u0, last-update: block-height }
+          (map-get? liquidity-pools pool-id)))
+  )
+    ;; Calculate proportional share of accumulated fees
+    (if (and (> (get lp-tokens position) u0) (> (get total-lp-supply pool) u0))
+      (/ (* (get fee-accumulated-a pool) (get lp-tokens position)) (get total-lp-supply pool))
+      u0
+    )
+  )
+)
+
+;; Calculate current pool price (sBTC per STX)
+(define-read-only (get-pool-price (pool-id principal))
+  (let ((pool (default-to { token-a-reserve: u0, token-b-reserve: u0, total-lp-supply: u0, fee-accumulated-a: u0, fee-accumulated-b: u0, last-update: block-height }
+              (map-get? liquidity-pools pool-id))))
+    (if (and (> (get token-a-reserve pool) u0) (> (get token-b-reserve pool) u0))
+      (ok (/ (* (get token-b-reserve pool) u1000000) (get token-a-reserve pool))) ;; Price with 6 decimals
+      ERR_POOL_NOT_EXISTS
+    )
+  )
+)
+
+;; --- READ-ONLY FUNCTIONS ---
+(define-read-only (get-pool-info (pool-id principal))
+  (let ((pool (default-to { token-a-reserve: u0, token-b-reserve: u0, total-lp-supply: u0, fee-accumulated-a: u0, fee-accumulated-b: u0, last-update: block-height }
+              (map-get? liquidity-pools pool-id))))
+    (ok {
+      sbtc-reserve: (get token-a-reserve pool),
+      stx-reserve: (get token-b-reserve pool),
+      total-lp-supply: (get total-lp-supply pool),
+      accumulated-fees-sbtc: (get fee-accumulated-a pool),
+      accumulated-fees-stx: (get fee-accumulated-b pool),
+      tvl: (+ (get token-a-reserve pool) (/ (get token-b-reserve pool) u10)) ;; Simplified TVL calculation
+    })
+  )
+)
+
+(define-read-only (get-user-lp-info (user principal) (pool-id principal))
+  (let ((position (default-to { lp-tokens: u0, unclaimed-fees-a: u0, unclaimed-fees-b: u0, last-fee-claim: block-height }
+                  (map-get? lp-positions { strategy: (as-contract tx-sender), user: user, pool: pool-id }))))
+    (ok {
+      lp-tokens: (get lp-tokens position),
+      unclaimed-fees-sbtc: (get unclaimed-fees-a position),
+      unclaimed-fees-stx: (get unclaimed-fees-b position),
+      pending-fees: (calculate-pending-fees user pool-id),
+      last-fee-claim: (get last-fee-claim position)
+    })
+  )
+)
+
+(define-read-only (get-strategy-stats)
+  (ok {
+    total-value-locked: (var-get total-value-locked),
+    active-pools: (var-get active-pools-count),
+    strategy-type: "DEX Liquidity Provision"
+  })
+)
