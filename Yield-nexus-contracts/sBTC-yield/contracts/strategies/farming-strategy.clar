@@ -244,3 +244,88 @@
               
               ;; Deposit the converted rewards
               (try! (deposit sbtc-to-reinvest user))
+
+              ;; Reset pending rewards
+              (map-set user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }
+                (merge updated-stake {
+                  pending-rewards: u0,
+                  last-compound: block-height
+                }))
+              
+              ;; Update compound statistics
+              (let ((perf (unwrap! (map-get? farm-performance farm-id) ERR_FARM_NOT_FOUND)))
+                (map-set farm-performance farm-id
+                  (merge perf {
+                    total-compounds: (+ (get total-compounds perf) u1)
+                  }))
+              )
+              
+              (ok sbtc-to-reinvest)
+            )
+          )
+          ERR_COMPOUND_FAILED
+        )
+      )
+    )
+  )
+)
+
+;; Auto-compound if enabled and threshold met
+(define-public (auto-compound-check (user principal))
+  (let (
+    (farm-id u1)
+    (stake (default-to { staked-amount: u0, reward-debt: u0, pending-rewards: u0, last-compound: block-height, auto-compound-enabled: true }
+           (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id })))
+  )
+    (if (and (get auto-compound-enabled stake) (var-get auto-compound-enabled))
+      (compound-rewards user)
+      (ok u0)
+    )
+  )
+)
+
+;; --- HELPER FUNCTIONS ---
+
+;; Update farm reward calculations
+(define-private (update-farm-rewards (farm-id uint))
+  (let ((farm (unwrap! (map-get? yield-farms farm-id) ERR_FARM_NOT_FOUND)))
+    (let ((blocks-passed (- block-height (get last-reward-update farm)))
+          (blocks-per-year u52560)) ;; ~10 minute blocks
+      
+      (if (and (> blocks-passed u0) (> (get total-staked farm) u0))
+        (let ((reward-per-block (/ (* (get total-staked farm) (get reward-rate farm)) (* u10000 blocks-per-year)))
+              (total-new-rewards (* reward-per-block blocks-passed))
+              (reward-per-token-increment (/ (* total-new-rewards u1000000) (get total-staked farm))))
+          
+          (map-set yield-farms farm-id
+            (merge farm {
+              accumulated-reward-per-token: (+ (get accumulated-reward-per-token farm) reward-per-token-increment),
+              last-reward-update: block-height
+            }))
+          (ok true)
+        )
+        (ok true)
+      )
+    )
+  )
+)
+
+;; Calculate pending rewards for a user
+(define-read-only (calculate-pending-rewards (user principal) (farm-id uint))
+  (let (
+    (stake (default-to { staked-amount: u0, reward-debt: u0, pending-rewards: u0, last-compound: block-height, auto-compound-enabled: true }
+           (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id })))
+    (farm (default-to { name: "sBTC Farm", staked-token: sbtc-token, reward-token: reward-token, total-staked: u0, reward-rate: REWARD_TOKEN_RATE, last-reward-update: block-height, accumulated-reward-per-token: u0, is-active: true }
+          (map-get? yield-farms farm-id)))
+  )
+    (if (> (get staked-amount stake) u0)
+      (let ((user-reward-per-token (/ (* (get staked-amount stake) (get accumulated-reward-per-token farm)) u1000000)))
+        (if (> user-reward-per-token (get reward-debt stake))
+          (- user-reward-per-token (get reward-debt stake))
+          u0
+        )
+      )
+      u0
+    )
+  )
+)
