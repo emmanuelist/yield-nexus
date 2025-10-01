@@ -244,7 +244,7 @@
               
               ;; Deposit the converted rewards
               (try! (deposit sbtc-to-reinvest user))
-
+              
               ;; Reset pending rewards
               (map-set user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }
                 (merge updated-stake {
@@ -327,5 +327,81 @@
       )
       u0
     )
+  )
+)
+
+;; Calculate projected APY based on current performance
+(define-read-only (calculate-projected-apy (farm-id uint))
+  (let (
+    (farm (default-to { name: "sBTC Farm", staked-token: sbtc-token, reward-token: reward-token, total-staked: u0, reward-rate: REWARD_TOKEN_RATE, last-reward-update: block-height, accumulated-reward-per-token: u0, is-active: true }
+          (map-get? yield-farms farm-id)))
+    (perf (default-to { total-rewards-distributed: u0, total-compounds: u0, average-apy: REWARD_TOKEN_RATE, last-performance-update: block-height }
+          (map-get? farm-performance farm-id)))
+  )
+    ;; Base APY plus compound bonus
+    (let ((base-apy (get reward-rate farm))
+          (compound-bonus (if (> (get total-compounds perf) u0) u200 u0))) ;; 2% bonus for compounding
+      (+ base-apy compound-bonus)
+    )
+  )
+)
+
+;; --- ADMIN FUNCTIONS ---
+(define-public (create-farm (name (string-ascii 32)) (staked-token principal) (reward-token principal) (reward-rate uint))
+  (let ((farm-id (var-get next-farm-id)))
+    ;; Only allow contract owner or authorized addresses
+    (map-set yield-farms farm-id {
+      name: name,
+      staked-token: staked-token,
+      reward-token: reward-token,
+      total-staked: u0,
+      reward-rate: reward-rate,
+      last-reward-update: block-height,
+      accumulated-reward-per-token: u0,
+      is-active: true
+    })
+    (var-set next-farm-id (+ farm-id u1))
+    (ok farm-id)
+  )
+)
+
+;; --- READ-ONLY FUNCTIONS ---
+(define-read-only (get-farm-info (farm-id uint))
+  (let ((farm (default-to { name: "Not Found", staked-token: sbtc-token, reward-token: reward-token, total-staked: u0, reward-rate: u0, last-reward-update: u0, accumulated-reward-per-token: u0, is-active: false }
+              (map-get? yield-farms farm-id))))
+    (ok {
+      name: (get name farm),
+      staked-token: (get staked-token farm),
+      reward-token: (get reward-token farm),
+      total-staked: (get total-staked farm),
+      reward-rate: (get reward-rate farm),
+      projected-apy: (calculate-projected-apy farm-id),
+      is-active: (get is-active farm)
+    })
+  )
+)
+
+(define-read-only (get-user-farm-info (user principal) (farm-id uint))
+  (let ((stake (default-to { staked-amount: u0, reward-debt: u0, pending-rewards: u0, last-compound: block-height, auto-compound-enabled: true }
+               (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }))))
+    (ok {
+      staked-amount: (get staked-amount stake),
+      pending-rewards: (calculate-pending-rewards user farm-id),
+      earned-rewards: (get pending-rewards stake),
+      last-compound: (get last-compound stake),
+      auto-compound-enabled: (get auto-compound-enabled stake)
+    })
+  )
+)
+
+(define-read-only (get-farm-performance (farm-id uint))
+  (let ((perf (default-to { total-rewards-distributed: u0, total-compounds: u0, average-apy: REWARD_TOKEN_RATE, last-performance-update: block-height }
+              (map-get? farm-performance farm-id))))
+    (ok {
+      total-rewards-distributed: (get total-rewards-distributed perf),
+      total-compounds: (get total-compounds perf),
+      average-apy: (get average-apy perf),
+      strategy-tvl: (var-get total-value-locked)
+    })
   )
 )
