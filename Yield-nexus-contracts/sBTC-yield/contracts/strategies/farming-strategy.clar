@@ -121,3 +121,126 @@
     )
   )
 )
+
+;; Withdraw staked sBTC and claim all rewards
+(define-public (withdraw (amount uint) (user principal))
+  (let (
+    (farm-id u1)
+    (stake (unwrap! (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }) ERR_INSUFFICIENT_BALANCE))
+    (farm (unwrap! (map-get? yield-farms farm-id) ERR_FARM_NOT_FOUND))
+  )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (>= (get staked-amount stake) amount) ERR_INSUFFICIENT_BALANCE)
+    
+    ;; Update farm rewards and harvest before withdrawal
+    (try! (update-farm-rewards farm-id))
+    (try! (harvest-rewards user farm-id))
+    
+    ;; Get updated stake after harvest
+    (let ((updated-stake (unwrap! (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }) ERR_INSUFFICIENT_BALANCE)))
+      
+      ;; Transfer sBTC back to user
+      (try! (as-contract (contract-call? sbtc-token transfer amount (as-contract tx-sender) user none)))
+      
+      ;; Update user stake
+      (map-set user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }
+        (merge updated-stake {
+          staked-amount: (- (get staked-amount updated-stake) amount)
+        }))
+      
+      ;; Update farm total
+      (map-set yield-farms farm-id
+        (merge farm {
+          total-staked: (- (get total-staked farm) amount)
+        }))
+      
+      (var-set total-value-locked (- (var-get total-value-locked) amount))
+      (ok amount)
+    )
+  )
+)
+
+;; Get user's balance including staked amount and pending rewards
+(define-public (get-balance (user principal))
+  (let (
+    (farm-id u1)
+    (stake (default-to { staked-amount: u0, reward-debt: u0, pending-rewards: u0, last-compound: block-height, auto-compound-enabled: true }
+           (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id })))
+  )
+    ;; Calculate pending rewards and convert to sBTC value
+    (let ((pending-rewards (calculate-pending-rewards user farm-id))
+          (reward-value-in-sbtc (/ pending-rewards u2))) ;; Assume 1 reward token = 0.5 sBTC
+      (ok (+ (get staked-amount stake) (get pending-rewards stake) reward-value-in-sbtc))
+    )
+  )
+)
+
+;; --- YIELD FARMING FUNCTIONS ---
+
+;; Harvest accumulated rewards
+(define-public (harvest-rewards (user principal) (farm-id uint))
+  (let (
+    (stake (default-to { staked-amount: u0, reward-debt: u0, pending-rewards: u0, last-compound: block-height, auto-compound-enabled: true }
+           (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id })))
+    (farm (unwrap! (map-get? yield-farms farm-id) ERR_FARM_NOT_FOUND))
+  )
+    ;; Update farm rewards first
+    (try! (update-farm-rewards farm-id))
+    
+    ;; Calculate pending rewards
+    (let ((pending (calculate-pending-rewards user farm-id)))
+      (if (> pending u0)
+        (begin
+          ;; Take performance fee
+          (let ((performance-fee (/ (* pending PERFORMANCE_FEE) u10000))
+                (user-reward (- pending performance-fee)))
+            
+            ;; Add performance fee to treasury
+            (var-set protocol-treasury (+ (var-get protocol-treasury) performance-fee))
+            
+            ;; Update user stake with harvested rewards
+            (map-set user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }
+              (merge stake {
+                pending-rewards: (+ (get pending-rewards stake) user-reward),
+                reward-debt: (/ (* (get staked-amount stake) (get accumulated-reward-per-token farm)) u1000000)
+              }))
+            
+            ;; Update farm performance
+            (let ((perf (default-to { total-rewards-distributed: u0, total-compounds: u0, average-apy: REWARD_TOKEN_RATE, last-performance-update: block-height }
+                        (map-get? farm-performance farm-id))))
+              (map-set farm-performance farm-id
+                (merge perf {
+                  total-rewards-distributed: (+ (get total-rewards-distributed perf) user-reward)
+                }))
+            )
+            
+            (ok user-reward)
+          )
+        )
+        (ok u0)
+      )
+    )
+  )
+)
+
+;; Compound rewards back into the farm
+(define-public (compound-rewards (user principal))
+  (let (
+    (farm-id u1)
+    (stake (unwrap! (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }) ERR_INSUFFICIENT_BALANCE))
+  )
+    (asserts! (>= (- block-height (get last-compound stake)) COMPOUND_COOLDOWN) ERR_HARVEST_COOLDOWN)
+    
+    ;; Harvest first to update pending rewards
+    (try! (harvest-rewards user farm-id))
+    
+    ;; Get updated stake
+    (let ((updated-stake (unwrap! (map-get? user-stakes { strategy: (as-contract tx-sender), user: user, farm-id: farm-id }) ERR_INSUFFICIENT_BALANCE)))
+      (let ((rewards-to-compound (get pending-rewards updated-stake)))
+        (if (>= rewards-to-compound AUTO_COMPOUND_THRESHOLD)
+          (begin
+            ;; Convert rewards to sBTC and reinvest (simplified)
+            (let ((sbtc-to-reinvest (/ rewards-to-compound u2))) ;; Assume 2:1 conversion rate
+              
+              ;; Deposit the converted rewards
+              (try! (deposit sbtc-to-reinvest user))
